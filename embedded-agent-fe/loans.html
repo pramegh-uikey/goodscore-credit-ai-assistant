@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Loan History</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+
+<body>
+<a class="link" href="index.html">← Back to Dashboard</a>
+<h1>All Loans</h1>
+
+<h2 style="color: white; margin-top: 30px;">Active Loans</h2>
+<div id="active-loans"></div>
+
+<h2 style="color: white; margin-top: 40px;">Closed Loans</h2>
+<div id="closed-loans"></div>
+
+<script>
+async function loadLoans() {
+  // Load all loans
+  const loans = await fetch(API_BASE + "/loans/summary").then(r=>r.json());
+  const activeLoansDiv = document.getElementById("active-loans");
+  const closedLoansDiv = document.getElementById("closed-loans");
+  
+  // Separate active and closed loans
+  const activeLoans = loans.filter(loan => loan.status === "Active");
+  const closedLoans = loans.filter(loan => loan.status === "Closed");
+  
+  // Display active loans
+  activeLoans.forEach(loan => {
+    const progress = ((loan.original_amount - loan.outstanding) / loan.original_amount * 100).toFixed(1);
+    activeLoansDiv.innerHTML += `
+      <div class="section">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+          <div>
+            <h2 style="margin: 0 0 8px 0;">${loan.name}</h2>
+            <span style="background: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 4px; font-size: 14px;">${loan.type}</span>
+            <span style="background: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 4px; font-size: 14px; margin-left: 8px;">${loan.status}</span>
+          </div>
+          <div style="text-align: right;">
+            <p style="margin: 0; font-size: 14px; color: #666;">Outstanding</p>
+            <p style="margin: 0; font-size: 28px; font-weight: bold; color: #dc2626;">₹${loan.outstanding.toLocaleString()}</p>
+          </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0;">
+          <div>
+            <p style="margin: 0; color: #666; font-size: 13px;">Monthly EMI</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold;">₹${loan.emi.toLocaleString()}</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 13px;">Interest Rate</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold;">${loan.interest_rate}%</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 13px;">Next Due Date</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold;">${loan.next_due_date}</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 13px;">Tenure Remaining</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold;">${loan.tenure_remaining}</p>
+          </div>
+        </div>
+        
+        <div style="margin-top: 15px;">
+          <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px;">
+            <span><strong>${progress}%</strong> paid of ₹${loan.original_amount.toLocaleString()}</span>
+            <span>${loan.tenure_remaining} remaining</span>
+          </div>
+          <div style="background: #e5e7eb; height: 10px; border-radius: 5px; overflow: hidden;">
+            <div style="background: linear-gradient(90deg, #10b981, #059669); height: 100%; width: ${progress}%;"></div>
+          </div>
+        </div>
+        
+        <a class="link" style="margin-top: 15px;" href="loan-details.html#id=${loan.id}">View detailed breakdown →</a>
+      </div>
+    `;
+  });
+  
+  // Display closed loans
+  if (closedLoans.length === 0) {
+    closedLoansDiv.innerHTML = '<p style="color: white; padding: 20px;">No closed loans</p>';
+  } else {
+    closedLoans.forEach(loan => {
+      closedLoansDiv.innerHTML += `
+        <div class="section">
+          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 15px;">
+            <div>
+              <h2 style="margin: 0 0 8px 0;">${loan.name}</h2>
+              <span style="background: #e5e7eb; color: #6b7280; padding: 4px 12px; border-radius: 4px; font-size: 14px;">${loan.type}</span>
+              <span style="background: #f3f4f6; color: #374151; padding: 4px 12px; border-radius: 4px; font-size: 14px; margin-left: 8px;">${loan.status}</span>
+            </div>
+            <div style="text-align: right;">
+              <p style="margin: 0; font-size: 14px; color: #666;">Closed On</p>
+              <p style="margin: 0; font-size: 18px; font-weight: bold; color: #10b981;">${loan.closed_date}</p>
+            </div>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0;">
+            <div>
+              <p style="margin: 0; color: #666; font-size: 13px;">Original Amount</p>
+              <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold;">₹${loan.original_amount.toLocaleString()}</p>
+            </div>
+            <div>
+              <p style="margin: 0; color: #666; font-size: 13px;">Interest Rate</p>
+              <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold;">${loan.interest_rate}%</p>
+            </div>
+            <div>
+              <p style="margin: 0; color: #666; font-size: 13px;">Status</p>
+              <p style="margin: 5px 0 0 0; font-size: 18px; font-weight: bold; color: #10b981;">Fully Paid</p>
+            </div>
+          </div>
+          
+          <div style="margin-top: 15px;">
+            <div style="background: #e5e7eb; height: 10px; border-radius: 5px; overflow: hidden;">
+              <div style="background: linear-gradient(90deg, #10b981, #059669); height: 100%; width: 100%;"></div>
+            </div>
+            <p style="margin: 10px 0 0 0; text-align: center; color: #10b981; font-weight: bold;">100% Complete</p>
+          </div>
+          
+          <a class="link" style="margin-top: 15px;" href="loan-details.html#id=${loan.id}">View full details →</a>
+        </div>
+      `;
+    });
+  }
+}
+
+loadLoans();
+</script>
+
+</body>
+</html>

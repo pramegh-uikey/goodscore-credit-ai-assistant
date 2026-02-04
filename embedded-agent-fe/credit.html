@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Credit Details</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+
+<body>
+<a class="link" href="index.html">← Back to Dashboard</a>
+<h1>Credit Score Details</h1>
+
+<div class="section">
+  <div class="header">
+    <h2>Current Score</h2>
+    <button class="audio-btn">🔊 Explain</button>
+  </div>
+  
+  <div style="display: flex; align-items: center; gap: 40px; margin: 20px 0;">
+    <div>
+      <p style="font-size: 64px; font-weight: bold; margin: 0; color: #3b82f6;" id="current-score"></p>
+      <p style="margin: 10px 0 0 0; font-size: 16px; color: #666;" id="score-change"></p>
+    </div>
+    <div style="flex: 1;">
+      <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Score Range</p>
+      <div style="background: linear-gradient(90deg, #ef4444, #f59e0b, #22c55e); height: 20px; border-radius: 10px; position: relative;">
+        <div id="score-indicator" style="position: absolute; top: -5px; width: 4px; height: 30px; background: #000; border-radius: 2px;"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; color: #666;">
+        <span>300</span>
+        <span>500</span>
+        <span>700</span>
+        <span>850</span>
+      </div>
+    </div>
+  </div>
+  
+  <p style="font-size: 13px; color: #999; margin-top: 20px;" id="last-refreshed"></p>
+</div>
+
+<div class="section">
+  <div class="header">
+    <h2>Score Trend (Last 12 Months)</h2>
+    <button class="audio-btn">🔊 Explain</button>
+  </div>
+  <p style="margin: 10px 0 15px 0; color: #666; font-size: 14px;">Monthly score history with key dates.</p>
+  <div style="width: 100%; overflow-x: auto;">
+    <canvas id="score-chart" width="900" height="280" style="width: 100%; max-width: 100%; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px;"></canvas>
+  </div>
+</div>
+
+<div class="section">
+  <div class="header">
+    <h2>Factors Affecting Your Score</h2>
+    <button class="audio-btn">🔊 Explain</button>
+  </div>
+
+  <ul id="reasons" style="line-height: 2;"></ul>
+</div>
+
+<div class="section">
+  <div class="header">
+    <h2>Score Breakdown</h2>
+    <button class="audio-btn">🔊 Explain</button>
+  </div>
+  
+  <div id="score-breakdown" style="margin-top: 20px;"></div>
+</div>
+
+<script>
+async function loadCreditDetails() {
+  // Load credit summary
+  const credit = await fetch(API_BASE + "/credit/summary").then(r=>r.json());
+  
+  document.getElementById("current-score").innerText = credit.score;
+  
+  const changeText = credit.change >= 0 ? `+${credit.change}` : `${credit.change}`;
+  const changeColor = credit.change >= 0 ? '#059669' : '#dc2626';
+  const changeIcon = credit.change >= 0 ? '↑' : '↓';
+  document.getElementById("score-change").innerHTML = `<span style="color: ${changeColor}; font-weight: bold;">${changeIcon} ${changeText} points</span> from last month (${credit.previous_score})`;
+  
+  // Position score indicator
+  const scorePercent = ((credit.score - 300) / (850 - 300)) * 100;
+  document.getElementById("score-indicator").style.left = scorePercent + '%';
+  
+  const refreshDate = new Date(credit.last_refreshed);
+  const now = new Date();
+  const hoursDiff = Math.floor((now - refreshDate) / (1000 * 60 * 60));
+  document.getElementById("last-refreshed").innerText = `Last refreshed: ${hoursDiff} hours ago (${refreshDate.toLocaleString()})`;
+
+  // Draw 12-month score trend graph from API
+  const historyResp = await fetch(API_BASE + "/credit/history").then(r=>r.json());
+  drawScoreTrend(historyResp.history);
+
+  // Load credit details (reasons + breakdown)
+  const details = await fetch(API_BASE + "/credit/details").then(r=>r.json());
+  const reasonsList = document.getElementById("reasons");
+  details.reasons.forEach(reason => {
+    reasonsList.innerHTML += `<li style="padding: 5px 0;">${reason}</li>`;
+  });
+
+  // Render breakdown from API
+  const breakdownEl = document.getElementById("score-breakdown");
+  breakdownEl.innerHTML = "";
+  details.breakdown.forEach(item => {
+    breakdownEl.innerHTML += `
+      <div style="margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>${item.label}</span>
+          <span style="font-weight: bold;">${item.percent}%</span>
+        </div>
+        <div style="background: #e5e7eb; height: 12px; border-radius: 6px; overflow: hidden;">
+          <div style="background: ${item.color}; height: 100%; width: ${item.percent}%;"></div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+function drawScoreTrend(history) {
+  const canvas = document.getElementById("score-chart");
+  const ctx = canvas.getContext("2d");
+  const padding = { top: 20, right: 30, bottom: 40, left: 40 };
+  const width = canvas.width - padding.left - padding.right;
+  const height = canvas.height - padding.top - padding.bottom;
+
+  const labels = history.map(item => {
+    const d = new Date(item.date);
+    return d.toLocaleString("en-US", { month: "short", year: "2-digit" });
+  });
+  const scores = history.map(item => item.score);
+
+  const minScore = Math.min(...scores) - 10;
+  const maxScore = Math.max(...scores) + 10;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Background grid
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (height / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(padding.left + width, y);
+    ctx.stroke();
+  }
+
+  // Axes labels (Y)
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "12px Arial";
+  for (let i = 0; i <= 4; i++) {
+    const value = Math.round(maxScore - ((maxScore - minScore) / 4) * i);
+    const y = padding.top + (height / 4) * i;
+    ctx.fillText(value.toString(), 6, y + 4);
+  }
+
+  // X labels
+  ctx.fillStyle = "#6b7280";
+  for (let i = 0; i < labels.length; i++) {
+    const x = padding.left + (width / (labels.length - 1)) * i;
+    if (i % 2 === 0) {
+      ctx.fillText(labels[i], x - 12, padding.top + height + 24);
+    }
+  }
+
+  // Plot line
+  ctx.strokeStyle = "#3b82f6";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  scores.forEach((val, i) => {
+    const x = padding.left + (width / (scores.length - 1)) * i;
+    const y = padding.top + height - ((val - minScore) / (maxScore - minScore)) * height;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Plot points
+  ctx.fillStyle = "#2563eb";
+  scores.forEach((val, i) => {
+    const x = padding.left + (width / (scores.length - 1)) * i;
+    const y = padding.top + height - ((val - minScore) / (maxScore - minScore)) * height;
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Highlight latest score
+  const lastX = padding.left + width;
+  const lastScore = scores[scores.length - 1];
+  const lastY = padding.top + height - ((lastScore - minScore) / (maxScore - minScore)) * height;
+  ctx.fillStyle = "#059669";
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 5, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+loadCreditDetails();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Loan Details</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+
+<body>
+<a class="link" href="index.html">← Back to Dashboard</a>
+<h1 id="loan-title">Loan Details</h1>
+
+<!-- AI Assistant Section - Candidate Implementation Task -->
+<div class="section" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #3b82f6;">
+  <div class="header">
+    <h2 style="color: #1e40af;">💬 AI Loan Assistant</h2>
+    <span style="background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold;">TODO: Implement</span>
+  </div>
+  <p style="margin: 10px 0; color: #475569;">Ask questions about this loan and get instant answers based on the loan data.</p>
+  
+  <div style="margin-top: 15px;">
+    <textarea 
+      id="user-question" 
+      placeholder="e.g., What is my total interest paid? When is my next payment due? Can you summarize this loan?"
+      style="width: 100%; padding: 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 80px;"
+    ></textarea>
+    
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      <button onclick="askQuestion()" style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+        Ask Question
+      </button>
+      <button onclick="getSummary()" style="flex: 1; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+        Get Summary
+      </button>
+    </div>
+  </div>
+  
+  <div id="ai-response" style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #3b82f6; display: none;">
+    <h3 style="margin: 0 0 10px 0; color: #1e40af; font-size: 16px;">Response:</h3>
+    <div id="ai-response-text" style="color: #334155; line-height: 1.6;"></div>
+  </div>
+  
+  <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+    <p style="margin: 0; font-size: 13px; color: #92400e;">
+      <strong>📝 Interview Task:</strong> Implement the backend API endpoints for this feature:
+    </p>
+    <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #92400e;">
+      <li><code>POST /loans/ask</code> - Answer questions about loan data</li>
+      <li><code>POST /loans/summarize</code> - Generate loan summary</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Loan Overview</h2>
+  <div id="loan-overview" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;"></div>
+</div>
+
+<div class="section">
+  <h2>Financial Summary</h2>
+  <div id="financial-summary" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;"></div>
+</div>
+
+<div class="section">
+  <h2>Loan Information</h2>
+  <div id="loan-info" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;"></div>
+</div>
+
+<div class="section" id="additional-details" style="display: none;">
+  <h2>Additional Details</h2>
+  <div id="additional-info"></div>
+</div>
+
+<div class="section">
+  <h2>Payment History (Last 18 Months)</h2>
+  <table id="payment-history">
+    <tr style="background: #f3f4f6; font-weight: bold;">
+      <th>Month</th>
+      <th>Due Date</th>
+      <th>Paid Date</th>
+      <th>Amount</th>
+      <th>Principal</th>
+      <th>Interest</th>
+      <th>Status</th>
+    </tr>
+  </table>
+</div>
+
+<script>
+async function loadLoanDetails() {
+  const urlParams = new URLSearchParams(window.location.search);
+  let loanId = urlParams.get('id');
+
+  if (!loanId && window.location.hash) {
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+    loanId = hashParams.get('id');
+  }
+  
+  if (!loanId) {
+    document.body.innerHTML = `
+      <div style="padding: 40px; text-align: center;">
+        <h1 style="color: #dc2626;">Error: No loan ID provided</h1>
+        <p style="color: #666; margin: 20px 0;">Please navigate to this page from the dashboard or loans page.</p>
+        <a href="index.html" style="color: #3b82f6; text-decoration: underline;">Go to Dashboard</a>
+      </div>
+    `;
+    return;
+  }
+
+  try {
+    const loan = await fetch(API_BASE + "/loans/details/" + loanId).then(r=>r.json());
+    
+    if (loan.error) {
+      document.body.innerHTML = '<h1>Error: Loan not found</h1>';
+      return;
+    }
+
+    // Set title
+    document.getElementById("loan-title").innerText = loan.name + " - Detailed View";
+    
+    // Store loan data for AI assistant
+    storeLoanData(loan);
+
+    // Loan Overview
+    const overview = document.getElementById("loan-overview");
+    overview.innerHTML = `
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Outstanding Amount</p>
+        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #dc2626;">₹${loan.outstanding.toLocaleString()}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Original Amount</p>
+        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold;">₹${loan.original_amount.toLocaleString()}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Monthly EMI</p>
+        <p style="margin: 5px 0 0 0; font-size: 24px; font-weight: bold; color: #3b82f6;">₹${loan.emi.toLocaleString()}</p>
+      </div>
+    `;
+
+    // Financial Summary
+    const financial = document.getElementById("financial-summary");
+    financial.innerHTML = `
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Total Paid</p>
+        <p style="margin: 5px 0 0 0; font-size: 20px; font-weight: bold; color: #10b981;">₹${loan.total_paid.toLocaleString()}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Total Interest Paid</p>
+        <p style="margin: 5px 0 0 0; font-size: 20px; font-weight: bold; color: #f59e0b;">₹${loan.total_interest_paid.toLocaleString()}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Interest Rate</p>
+        <p style="margin: 5px 0 0 0; font-size: 20px; font-weight: bold;">${loan.interest_rate}% p.a.</p>
+      </div>
+    `;
+
+    // Loan Information
+    const info = document.getElementById("loan-info");
+    info.innerHTML = `
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Loan Type</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.type}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Status</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;"><span style="background: ${loan.status === 'Active' ? '#dcfce7' : '#f3f4f6'}; color: ${loan.status === 'Active' ? '#166534' : '#374151'}; padding: 4px 12px; border-radius: 4px;">${loan.status}</span></p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Lender</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.lender}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Account Number</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.account_number}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Disbursement Date</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.disbursement_date}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Maturity Date</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.maturity_date}</p>
+      </div>
+      ${loan.status === 'Active' ? `
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Next Due Date</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold; color: #dc2626;">${loan.next_due_date}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Tenure Remaining</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.tenure_remaining}</p>
+      </div>
+      ` : `
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Closed Date</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold; color: #10b981;">${loan.closed_date}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Loan Duration</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">Completed</p>
+      </div>
+      `}
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Prepayment Charges</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.prepayment_charges}</p>
+      </div>
+      <div>
+        <p style="margin: 0; color: #666; font-size: 14px;">Late Payment Fee</p>
+        <p style="margin: 5px 0 0 0; font-weight: bold;">₹${loan.late_payment_fee}</p>
+      </div>
+    `;
+
+    // Additional Details (Vehicle/Property)
+    if (loan.vehicle_details) {
+      const additionalSection = document.getElementById("additional-details");
+      additionalSection.style.display = "block";
+      const additionalInfo = document.getElementById("additional-info");
+      additionalInfo.innerHTML = `
+        <h3 style="margin-top: 0;">Vehicle Details</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <p style="margin: 0; color: #666; font-size: 14px;">Make & Model</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.vehicle_details.make} ${loan.vehicle_details.model}</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 14px;">Year</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.vehicle_details.year}</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 14px;">Registration Number</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.vehicle_details.registration}</p>
+          </div>
+        </div>
+      `;
+    } else if (loan.property_details) {
+      const additionalSection = document.getElementById("additional-details");
+      additionalSection.style.display = "block";
+      const additionalInfo = document.getElementById("additional-info");
+      additionalInfo.innerHTML = `
+        <h3 style="margin-top: 0;">Property Details</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div>
+            <p style="margin: 0; color: #666; font-size: 14px;">Address</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.property_details.address}</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 14px;">Property Type</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">${loan.property_details.type}</p>
+          </div>
+          <div>
+            <p style="margin: 0; color: #666; font-size: 14px;">Property Value</p>
+            <p style="margin: 5px 0 0 0; font-weight: bold;">₹${loan.property_details.property_value.toLocaleString()}</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Payment History with softer colors
+    const paymentTable = document.getElementById("payment-history");
+    loan.payment_history.forEach((payment, index) => {
+      // Softer colors for status
+      let statusColor, statusBg;
+      switch(payment.status) {
+        case 'Paid':
+          statusColor = '#059669'; // Softer green
+          statusBg = '#d1fae5';
+          break;
+        case 'Late':
+          statusColor = '#d97706'; // Softer orange
+          statusBg = '#fef3c7';
+          break;
+        case 'Missed':
+          statusColor = '#dc2626'; // Softer red
+          statusBg = '#fee2e2';
+          break;
+        case 'Pending':
+          statusColor = '#2563eb'; // Softer blue
+          statusBg = '#dbeafe';
+          break;
+        default:
+          statusColor = '#6b7280';
+          statusBg = '#f3f4f6';
+      }
+      
+      // Alternate row background for better readability
+      const rowBg = index % 2 === 0 ? '#ffffff' : '#f9fafb';
+      
+      paymentTable.innerHTML += `
+        <tr style="background: ${rowBg};">
+          <td style="font-weight: 500;">${payment.month_year}</td>
+          <td>${payment.due_date}</td>
+          <td>${payment.paid_date || '-'}</td>
+          <td style="font-weight: 500;">${payment.amount > 0 ? '₹' + payment.amount.toLocaleString() : '-'}</td>
+          <td>${payment.principal > 0 ? '₹' + payment.principal.toLocaleString() : '-'}</td>
+          <td>${payment.interest > 0 ? '₹' + payment.interest.toLocaleString() : '-'}</td>
+          <td><span style="background: ${statusBg}; color: ${statusColor}; padding: 4px 12px; border-radius: 12px; font-weight: 500; font-size: 13px;">${payment.status}</span></td>
+        </tr>
+      `;
+    });
+
+  } catch (error) {
+    console.error('Error loading loan details:', error);
+    document.body.innerHTML = '<h1>Error loading loan details</h1>';
+  }
+}
+
+loadLoanDetails();
+
+// AI Assistant Functions - Candidate Implementation Task
+let currentLoanData = null;
+
+// Store loan data globally for AI assistant
+function storeLoanData(loan) {
+  currentLoanData = loan;
+}
+
+async function askQuestion() {
+  const question = document.getElementById('user-question').value.trim();
+  const responseDiv = document.getElementById('ai-response');
+  const responseText = document.getElementById('ai-response-text');
+  
+  if (!question) {
+    alert('Please enter a question');
+    return;
+  }
+  
+  // Show loading state
+  responseDiv.style.display = 'block';
+  responseText.innerHTML = '<p style="color: #64748b;">🤔 Thinking...</p>';
+  
+  try {
+    // Call the backend API endpoint
+    const response = await fetch(API_BASE + '/loans/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        loan_id: currentLoanData?.id,
+        question: question,
+        loan_data: currentLoanData
+      })
+    });
+    
+    const data = await response.json();
+    
+    // Check if the endpoint is implemented
+    if (data.error === "Not implemented") {
+      // Show TODO message
+      responseText.innerHTML = `
+        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0 0 10px 0; color: #92400e; font-weight: bold;">⚠️ ${data.message}</p>
+          <p style="margin: 0; color: #92400e; font-size: 14px;">
+            ${data.hint}
+          </p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;">
+            <strong>Your question:</strong> "${question}"
+          </p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;">
+            <strong>Expected behavior:</strong> Parse the question, extract relevant data from the loan object, 
+            and return a natural language answer in the format: <code>{ "answer": "..." }</code>
+          </p>
+        </div>
+      `;
+    } else if (data.answer) {
+      // Show the actual answer from implemented endpoint
+      responseText.innerHTML = `<p style="font-size: 15px;">${data.answer}</p>`;
+    } else {
+      throw new Error('Invalid response format');
+    }
+    
+  } catch (error) {
+    // Network or other errors
+    responseText.innerHTML = `
+      <div style="padding: 15px; background: #fee2e2; border-radius: 6px; border-left: 4px solid #dc2626;">
+        <p style="margin: 0 0 10px 0; color: #991b1b; font-weight: bold;">❌ Error</p>
+        <p style="margin: 0; color: #991b1b; font-size: 14px;">
+          ${error.message || 'Failed to connect to the API. Make sure the backend is running.'}
+        </p>
+      </div>
+    `;
+  }
+}
+
+async function getSummary() {
+  const responseDiv = document.getElementById('ai-response');
+  const responseText = document.getElementById('ai-response-text');
+  
+  // Show loading state
+  responseDiv.style.display = 'block';
+  responseText.innerHTML = '<p style="color: #64748b;">📊 Generating summary...</p>';
+  
+  try {
+    // Call the backend API endpoint
+    const response = await fetch(API_BASE + '/loans/summarize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        loan_id: currentLoanData?.id,
+        loan_data: currentLoanData
+      })
+    });
+    
+    const data = await response.json();
+    
+    // Check if the endpoint is implemented
+    if (data.error === "Not implemented") {
+      // Show TODO message
+      responseText.innerHTML = `
+        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0 0 10px 0; color: #92400e; font-weight: bold;">⚠️ ${data.message}</p>
+          <p style="margin: 0; color: #92400e; font-size: 14px;">
+            ${data.hint}
+          </p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;">
+            <strong>Expected output:</strong> A natural language summary including key metrics like 
+            outstanding amount, payment status, total paid, interest rate, and next due date.
+          </p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;">
+            <strong>Example:</strong> "This is a ${currentLoanData?.type} loan with an outstanding balance of 
+            ₹${currentLoanData?.outstanding?.toLocaleString()}. You have paid ₹${currentLoanData?.total_paid?.toLocaleString()} 
+            so far with ₹${currentLoanData?.total_interest_paid?.toLocaleString()} in interest. 
+            ${currentLoanData?.status === 'Active' ? `Your next payment of ₹${currentLoanData?.emi?.toLocaleString()} is due on ${currentLoanData?.next_due_date}.` : 'This loan has been fully paid off.'}"
+          </p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;">
+            <strong>Response format:</strong> <code>{ "summary": "..." }</code>
+          </p>
+        </div>
+      `;
+    } else if (data.summary) {
+      // Show the actual summary from implemented endpoint
+      responseText.innerHTML = `<p style="font-size: 15px; line-height: 1.8;">${data.summary}</p>`;
+    } else {
+      throw new Error('Invalid response format');
+    }
+    
+  } catch (error) {
+    // Network or other errors
+    responseText.innerHTML = `
+      <div style="padding: 15px; background: #fee2e2; border-radius: 6px; border-left: 4px solid #dc2626;">
+        <p style="margin: 0 0 10px 0; color: #991b1b; font-weight: bold;">❌ Error</p>
+        <p style="margin: 0; color: #991b1b; font-size: 14px;">
+          ${error.message || 'Failed to connect to the API. Make sure the backend is running.'}
+        </p>
+      </div>
+    `;
+  }
+}
+</script>
+
+</body>
+</html>

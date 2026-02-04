@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Transactions</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
+</head>
+
+<body>
+<h1>Transactions (6 months)</h1>
+
+<!-- AI Assistant Section - Candidate Implementation Task -->
+<div class="section" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #3b82f6;">
+  <div class="header">
+    <h2 style="color: #1e40af;">💬 AI Transactions Assistant</h2>
+    <span style="background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold;">TODO: Implement</span>
+  </div>
+  <p style="margin: 10px 0; color: #475569;">Ask questions about your transactions and get instant insights.</p>
+  
+  <div style="margin-top: 15px;">
+    <textarea 
+      id="txn-question" 
+      placeholder="e.g., What is my total spend? Which category is highest? Summarize my last 6 months."
+      style="width: 100%; padding: 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 80px;"
+    ></textarea>
+    
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      <button onclick="askTxnQuestion()" style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
+        Ask Question
+      </button>
+      <button onclick="getTxnSummary()" style="flex: 1; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
+        Get Summary
+      </button>
+    </div>
+  </div>
+  
+  <div id="txn-ai-response" style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #3b82f6; display: none;">
+    <h3 style="margin: 0 0 10px 0; color: #1e40af; font-size: 16px;">Response:</h3>
+    <div id="txn-ai-response-text" style="color: #334155; line-height: 1.6;"></div>
+  </div>
+  
+  <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+    <p style="margin: 0; font-size: 13px; color: #92400e;">
+      <strong>📝 Interview Task:</strong> Implement the backend API endpoints for this feature:
+    </p>
+    <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #92400e;">
+      <li><code>POST /transactions/ask</code> - Answer questions about transactions</li>
+      <li><code>POST /transactions/summarize</code> - Generate transaction summary</li>
+    </ul>
+  </div>
+</div>
+
+<table id="table">
+  <tr style="background: #f9f9f9; font-weight: bold;">
+    <th>Date</th>
+    <th>Category</th>
+    <th>Merchant</th>
+    <th>Type</th>
+    <th>Amount</th>
+  </tr>
+</table>
+<button onclick="next()">Load More</button>
+
+<script>
+let page=0;
+let allTransactions = [];
+
+function next(){
+  fetch(API_BASE + "/transactions?page="+page)
+  .then(r=>r.json())
+  .then(data=>{
+    const t=document.getElementById("table");
+    data.forEach(x=>{
+      const typeColor = x.type === 'debit' ? '#dc2626' : '#059669';
+      const typeSymbol = x.type === 'debit' ? '-' : '+';
+      allTransactions.push(x);
+      t.innerHTML += `<tr>
+        <td>${x.date}</td>
+        <td>${x.category}</td>
+        <td>${x.merchant}</td>
+        <td style="color: ${typeColor}; font-weight: bold;">${x.type.toUpperCase()}</td>
+        <td style="color: ${typeColor}; font-weight: bold;">${typeSymbol}₹${x.amount}</td>
+      </tr>`;
+    });
+    page++;
+  });
+}
+
+next();
+
+// AI Assistant Functions - Candidate Implementation Task
+async function askTxnQuestion() {
+  const question = document.getElementById('txn-question').value.trim();
+  const responseDiv = document.getElementById('txn-ai-response');
+  const responseText = document.getElementById('txn-ai-response-text');
+  
+  if (!question) {
+    alert('Please enter a question');
+    return;
+  }
+  
+  responseDiv.style.display = 'block';
+  responseText.innerHTML = '<p style="color: #64748b;">🤔 Thinking...</p>';
+  
+  try {
+    const response = await fetch(API_BASE + '/transactions/ask', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        question: question,
+        transactions: allTransactions
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error === "Not implemented") {
+      responseText.innerHTML = `
+        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0 0 10px 0; color: #92400e; font-weight: bold;">⚠️ ${data.message}</p>
+          <p style="margin: 0; color: #92400e; font-size: 14px;">${data.hint}</p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;"><strong>Your question:</strong> "${question}"</p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;"><strong>Response format:</strong> <code>{ "answer": "..." }</code></p>
+        </div>
+      `;
+    } else if (data.answer) {
+      responseText.innerHTML = `<p style="font-size: 15px;">${data.answer}</p>`;
+    } else {
+      throw new Error('Invalid response format');
+    }
+  } catch (error) {
+    responseText.innerHTML = `
+      <div style="padding: 15px; background: #fee2e2; border-radius: 6px; border-left: 4px solid #dc2626;">
+        <p style="margin: 0 0 10px 0; color: #991b1b; font-weight: bold;">❌ Error</p>
+        <p style="margin: 0; color: #991b1b; font-size: 14px;">${error.message || 'Failed to connect to the API. Make sure the backend is running.'}</p>
+      </div>
+    `;
+  }
+}
+
+async function getTxnSummary() {
+  const responseDiv = document.getElementById('txn-ai-response');
+  const responseText = document.getElementById('txn-ai-response-text');
+  
+  responseDiv.style.display = 'block';
+  responseText.innerHTML = '<p style="color: #64748b;">📊 Generating summary...</p>';
+  
+  try {
+    const response = await fetch(API_BASE + '/transactions/summarize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transactions: allTransactions
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.error === "Not implemented") {
+      responseText.innerHTML = `
+        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
+          <p style="margin: 0 0 10px 0; color: #92400e; font-weight: bold;">⚠️ ${data.message}</p>
+          <p style="margin: 0; color: #92400e; font-size: 14px;">${data.hint}</p>
+          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;"><strong>Response format:</strong> <code>{ "summary": "..." }</code></p>
+        </div>
+      `;
+    } else if (data.summary) {
+      responseText.innerHTML = `<p style="font-size: 15px; line-height: 1.8;">${data.summary}</p>`;
+    } else {
+      throw new Error('Invalid response format');
+    }
+  } catch (error) {
+    responseText.innerHTML = `
+      <div style="padding: 15px; background: #fee2e2; border-radius: 6px; border-left: 4px solid #dc2626;">
+        <p style="margin: 0 0 10px 0; color: #991b1b; font-weight: bold;">❌ Error</p>
+        <p style="margin: 0; color: #991b1b; font-size: 14px;">${error.message || 'Failed to connect to the API. Make sure the backend is running.'}</p>
+      </div>
+    `;
+  }
+}
+</script>
+
+</body>
+</html>
