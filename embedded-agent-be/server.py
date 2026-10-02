@@ -1,7 +1,43 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import random
+import logging
 from datetime import datetime, timedelta
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import Field, model_validator
+import demo_history
+import insights
+import explain
+from insights_types import Exchange
+
+from agent import (
+    InvalidPageData,
+    LoanAskRequest,
+    LoanSummaryRequest,
+    TransactionsAskRequest,
+    TransactionsSummaryRequest,
+    generate_grounded_text,
+    loan_context,
+    transaction_context,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ConversationRequest:
+    @model_validator(mode="after")
+    def bounded_conversation(self):
+        if sum(len(item.question) + len(item.answer) for item in self.history) > 30000:
+            raise ValueError("Conversation exceeds 30,000 characters; start a new conversation.")
+        return self
+
+
+class TransactionsConversationRequest(ConversationRequest, TransactionsAskRequest):
+    history: list[Exchange] = Field(default_factory=list, max_length=10)
+
+
+class LoanConversationRequest(ConversationRequest, LoanAskRequest):
+    history: list[Exchange] = Field(default_factory=list, max_length=10)
+
 
 app = FastAPI()
 
@@ -12,6 +48,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/assistant/config")
+def assistant_config():
+    return {"insights_enabled": insights.enabled()}
+
+
+@app.post("/sections/explain")
+def explain_section(request: explain.ExplainRequest):
+    try:
+        context = explain.build_context(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        result = explain.generate_explanation(context)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="The explanation is temporarily unavailable. Please try again.") from exc
+    return {"section": request.section, **result.model_dump()}
 
 
 @app.get("/credit/summary")
@@ -63,6 +117,8 @@ def credit_history():
 
 @app.get("/transactions/top")
 def txns_top():
+    if insights.enabled():
+        return sorted(demo_history.transactions(), key=lambda row: row["amount"], reverse=True)[:5]
     categories = ["Food", "Travel", "Shopping", "Entertainment", "Utilities", "Healthcare"]
     transactions = []
     
@@ -83,6 +139,10 @@ def txns_top():
 
 @app.get("/transactions")
 def txns(page:int=0):
+    if insights.enabled():
+        if page < 0:
+            raise HTTPException(status_code=400, detail="Page must be nonnegative.")
+        return demo_history.transactions(page)
     categories = ["Food", "Travel", "Shopping", "Entertainment", "Utilities", "Healthcare", "Groceries", "Gas"]
     transactions = []
     
@@ -102,6 +162,8 @@ def txns(page:int=0):
 @app.get("/loans/summary")
 def loans_summary():
     """Returns all loans (active and closed) with L1 (summary) data"""
+    if insights.enabled():
+        return demo_history.loan_summaries()
     loans = [
         {
             "id": "LOAN001",
@@ -171,6 +233,11 @@ def loans_summary():
 @app.get("/loans/details/{loan_id}")
 def loan_details(loan_id: str):
     """Returns L2 (detailed) data for a specific loan"""
+    if insights.enabled():
+        try:
+            return demo_history.loan(loan_id, displayed=True)
+        except KeyError:
+            return {"error": "Loan not found"}
     # Generate payment history for last 18 months
     payment_history = []
     for i in range(18):
@@ -338,102 +405,74 @@ def loans_history():
         for _ in range(40)
     ]
 
+def _respond(context: dict, action: str, question: str | None = None) -> str:
+    try:
+        result = generate_grounded_text(context, action, question)
+    except Exception as exc:
+        logger.warning("Gemini request failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=503, detail="The assistant is temporarily unavailable. Please try again."
+        ) from exc
+
+    if not result.supported:
+        if action == "ask":
+            return "That information is not shown on this page."
+        raise HTTPException(status_code=503, detail="A grounded summary could not be generated.")
+    return result.text.strip()
+
+
+def _answer(context, request, loan_id=None):
+    question = request.question.strip()
+    if not insights.enabled():
+        return {"answer": _respond(context, "ask", question)}
+    try:
+        decision = insights.classify(question, context["page"], request.history)
+        if decision.route == "insights":
+            return insights.answer_insights(context, loan_id, question, request.history, decision)
+    except InvalidPageData as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.warning("Insights request failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="The assistant is temporarily unavailable. Please try again.") from exc
+    logger.info("assistant_route=direct scope=displayed")
+    return {"answer": _respond(context, "ask", decision.resolved_question), "mode": "direct", "coverage": {"scope": "displayed"}}
+
+
 @app.post("/loans/ask")
-def ask_loan_question(request: dict):
-    """
-    TODO: Candidate should implement this endpoint
-    
-    This endpoint should:
-    1. Parse the user's question from request body
-    2. Extract relevant information from the loan_data
-    3. Return a natural language answer
-    
-    Expected request body:
-    {
-        "loan_id": "LOAN001",
-        "question": "What is my total interest paid?",
-        "loan_data": { ... full loan object ... }
-    }
-    
-    Expected response:
-    {
-        "answer": "You have paid ₹18,500 in interest on your Personal Loan."
-    }
-    """
-    # TODO: Implement question answering logic here
-    return {
-        "error": "Not implemented",
-        "message": "This endpoint needs to be implemented by the candidate",
-        "hint": "Parse the question, extract relevant data from loan_data, and return a natural language answer"
-    }
+def ask_loan_question(request: LoanConversationRequest):
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Enter a question.")
+    try:
+        context = loan_context(request.loan_id, request.loan_data)
+    except InvalidPageData as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _answer(context, request, request.loan_id)
+
 
 @app.post("/loans/summarize")
-def summarize_loan(request: dict):
-    """
-    TODO: Candidate should implement this endpoint
-    
-    This endpoint should:
-    1. Take the loan_data from request body
-    2. Generate a comprehensive summary
-    3. Return the summary as natural language
-    
-    Expected request body:
-    {
-        "loan_id": "LOAN001",
-        "loan_data": { ... full loan object ... }
-    }
-    
-    Expected response:
-    {
-        "summary": "This is a Personal loan from HDFC Bank with an outstanding balance of ₹50,000..."
-    }
-    """
-    # TODO: Implement summary generation logic here
-    return {
-        "error": "Not implemented",
-        "message": "This endpoint needs to be implemented by the candidate",
-        "hint": "Generate a comprehensive summary including loan type, amounts, rates, and payment status"
-    }
+def summarize_loan(request: LoanSummaryRequest):
+    try:
+        context = loan_context(request.loan_id, request.loan_data)
+    except InvalidPageData as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"summary": _respond(context, "summarize")}
+
 
 @app.post("/transactions/ask")
-def ask_transactions_question(request: dict):
-    """
-    TODO: Candidate should implement this endpoint
+def ask_transactions_question(request: TransactionsConversationRequest):
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Enter a question.")
+    try:
+        context = transaction_context(request.transactions)
+    except InvalidPageData as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _answer(context, request)
 
-    Expected request body:
-    {
-        "question": "What is my total spend?",
-        "transactions": [ ... list of transactions ... ]
-    }
-
-    Expected response:
-    {
-        "answer": "Your total spend across all transactions is ₹..."
-    }
-    """
-    return {
-        "error": "Not implemented",
-        "message": "This endpoint needs to be implemented by the candidate",
-        "hint": "Parse the question, analyze the transactions list, and return a natural language answer"
-    }
 
 @app.post("/transactions/summarize")
-def summarize_transactions(request: dict):
-    """
-    TODO: Candidate should implement this endpoint
-
-    Expected request body:
-    {
-        "transactions": [ ... list of transactions ... ]
-    }
-
-    Expected response:
-    {
-        "summary": "In the last 6 months, you spent ..."
-    }
-    """
-    return {
-        "error": "Not implemented",
-        "message": "This endpoint needs to be implemented by the candidate",
-        "hint": "Compute totals, top categories, and generate a concise summary"
-    }
+def summarize_transactions(request: TransactionsSummaryRequest):
+    try:
+        context = transaction_context(request.transactions)
+    except InvalidPageData as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"summary": _respond(context, "summarize")}

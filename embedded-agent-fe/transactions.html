@@ -1,55 +1,45 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Transactions</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="config.js"></script>
+  <script src="assistant-conversation.js"></script>
 </head>
 
 <body>
-<h1>Transactions (6 months)</h1>
+<h1>Transactions</h1>
 
-<!-- AI Assistant Section - Candidate Implementation Task -->
 <div class="section" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border: 2px solid #3b82f6;">
   <div class="header">
     <h2 style="color: #1e40af;">💬 AI Transactions Assistant</h2>
-    <span style="background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: bold;">TODO: Implement</span>
   </div>
-  <p style="margin: 10px 0; color: #475569;">Ask questions about your transactions and get instant insights.</p>
-  
+  <p id="txn-description" style="margin: 10px 0; color: #475569;">Ask about the transactions currently loaded below.</p>
+
   <div style="margin-top: 15px;">
-    <textarea 
-      id="txn-question" 
-      placeholder="e.g., What is my total spend? Which category is highest? Summarize my last 6 months."
+    <textarea
+      id="txn-question"
+      maxlength="1000"
+      placeholder="e.g., What is my total spend? Which category is highest?"
       style="width: 100%; padding: 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical; min-height: 80px;"
     ></textarea>
-    
     <div style="display: flex; gap: 10px; margin-top: 10px;">
-      <button onclick="askTxnQuestion()" style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">
-        Ask Question
-      </button>
-      <button onclick="getTxnSummary()" style="flex: 1; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">
-        Get Summary
-      </button>
+      <button id="txn-ask-button" onclick="askTxnQuestion()" disabled style="flex: 1; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);">Ask Question</button>
+      <button id="txn-summary-button" onclick="getTxnSummary()" disabled style="flex: 1; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">Get Summary</button>
     </div>
   </div>
-  
-  <div id="txn-ai-response" style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #3b82f6; display: none;">
+
+  <button id="txn-new-conversation" hidden type="button">New conversation</button>
+  <div id="txn-conversation" hidden style="white-space: pre-wrap; max-height: 320px; overflow-y: auto;"></div>
+  <p id="txn-coverage" style="font-size: 13px; color: #475569;"></p>
+  <div id="txn-ai-response" role="status" aria-live="polite" style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px; border-left: 4px solid #3b82f6; display: none;">
     <h3 style="margin: 0 0 10px 0; color: #1e40af; font-size: 16px;">Response:</h3>
-    <div id="txn-ai-response-text" style="color: #334155; line-height: 1.6;"></div>
-  </div>
-  
-  <div style="margin-top: 15px; padding: 12px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
-    <p style="margin: 0; font-size: 13px; color: #92400e;">
-      <strong>📝 Interview Task:</strong> Implement the backend API endpoints for this feature:
-    </p>
-    <ul style="margin: 10px 0 0 0; padding-left: 20px; font-size: 13px; color: #92400e;">
-      <li><code>POST /transactions/ask</code> - Answer questions about transactions</li>
-      <li><code>POST /transactions/summarize</code> - Generate transaction summary</li>
-    </ul>
+    <div id="txn-ai-response-text" style="color: #334155; line-height: 1.6; white-space: pre-wrap;"></div>
   </div>
 </div>
 
+<p id="txn-loaded-count" style="color: #475569;">Loading transactions...</p>
 <table id="table">
   <tr style="background: #f9f9f9; font-weight: bold;">
     <th>Date</th>
@@ -59,130 +49,139 @@
     <th>Amount</th>
   </tr>
 </table>
-<button onclick="next()">Load More</button>
+<button id="txn-load-more" onclick="next()" disabled>Load More</button>
+<span id="txn-load-status" role="status" style="margin-left: 10px; color: #991b1b;"></span>
 
 <script>
-let page=0;
+let page = 0;
 let allTransactions = [];
+let loadingTransactions = false;
+let assistantBusy = false;
+let noMoreTransactions = false;
+const txnConversation = new AssistantConversation('txn', 'txn-description', 'txn-question');
 
-function next(){
-  fetch(API_BASE + "/transactions?page="+page)
-  .then(r=>r.json())
-  .then(data=>{
-    const t=document.getElementById("table");
-    data.forEach(x=>{
-      const typeColor = x.type === 'debit' ? '#dc2626' : '#059669';
-      const typeSymbol = x.type === 'debit' ? '-' : '+';
-      allTransactions.push(x);
-      t.innerHTML += `<tr>
-        <td>${x.date}</td>
-        <td>${x.category}</td>
-        <td>${x.merchant}</td>
-        <td style="color: ${typeColor}; font-weight: bold;">${x.type.toUpperCase()}</td>
-        <td style="color: ${typeColor}; font-weight: bold;">${typeSymbol}₹${x.amount}</td>
-      </tr>`;
-    });
-    page++;
-  });
+function updateTxnControls() {
+  const canAsk = allTransactions.length > 0 && !loadingTransactions && !assistantBusy;
+  document.getElementById('txn-ask-button').disabled = !canAsk;
+  document.getElementById('txn-summary-button').disabled = !canAsk;
+  document.getElementById('txn-load-more').disabled = loadingTransactions || assistantBusy || noMoreTransactions;
 }
 
-next();
+function showTxnResponse(message, isError = false) {
+  document.getElementById('txn-ai-response').style.display = 'block';
+  const text = document.getElementById('txn-ai-response-text');
+  text.textContent = message;
+  text.style.color = isError ? '#991b1b' : '#334155';
+}
 
-// AI Assistant Functions - Candidate Implementation Task
-async function askTxnQuestion() {
+function clearTxnResponse() {
+  document.getElementById('txn-ai-response').style.display = 'none';
+  document.getElementById('txn-ai-response-text').textContent = '';
+}
+
+async function next() {
+  if (loadingTransactions || assistantBusy || noMoreTransactions) return;
+  loadingTransactions = true;
+  updateTxnControls();
+  const status = document.getElementById('txn-load-status');
+  status.textContent = '';
+
+  try {
+    const response = await fetch(API_BASE + '/transactions?page=' + page);
+    if (!response.ok) throw new Error('Could not load transactions.');
+    const data = await response.json();
+    if (!Array.isArray(data)) throw new Error('Invalid transactions response.');
+    if (data.length === 0) {
+      noMoreTransactions = true;
+      status.textContent = 'No more transactions.';
+      return;
+    }
+
+    const table = document.getElementById('table');
+    for (const item of data) {
+      const row = {
+        date: item.date,
+        category: item.category,
+        merchant: item.merchant,
+        type: item.type,
+        amount: item.amount
+      };
+      const tr = document.createElement('tr');
+      const values = [
+        row.date,
+        row.category,
+        row.merchant,
+        row.type.toUpperCase(),
+        (row.type === 'debit' ? '-' : '+') + '₹' + row.amount
+      ];
+      for (const value of values) {
+        const td = document.createElement('td');
+        td.textContent = value;
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+      allTransactions.push(row);
+    }
+    page++;
+    document.getElementById('txn-loaded-count').textContent =
+      'Showing ' + allTransactions.length + ' loaded transactions. Direct answers and summaries use these rows only.';
+    clearTxnResponse();
+  } catch (error) {
+    status.textContent = error.message || 'Could not load transactions.';
+    if (allTransactions.length === 0) {
+      document.getElementById('txn-loaded-count').textContent = 'Transactions are unavailable.';
+    }
+  } finally {
+    loadingTransactions = false;
+    updateTxnControls();
+  }
+}
+
+async function runTxnAssistant(action) {
+  if (loadingTransactions || assistantBusy || allTransactions.length === 0) return;
   const question = document.getElementById('txn-question').value.trim();
-  const responseDiv = document.getElementById('txn-ai-response');
-  const responseText = document.getElementById('txn-ai-response-text');
-  
-  if (!question) {
-    alert('Please enter a question');
+  if (action === 'ask' && !question) {
+    showTxnResponse('Enter a question about the displayed transactions.', true);
     return;
   }
-  
-  responseDiv.style.display = 'block';
-  responseText.innerHTML = '<p style="color: #64748b;">🤔 Thinking...</p>';
-  
+  assistantBusy = true;
+  txnConversation.setBusy(true);
+  txnConversation.clearCoverage();
+  updateTxnControls();
+  showTxnResponse(action === 'ask' ? 'Thinking...' : 'Generating summary...');
+
   try {
-    const response = await fetch(API_BASE + '/transactions/ask', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        question: question,
-        transactions: allTransactions
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.error === "Not implemented") {
-      responseText.innerHTML = `
-        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
-          <p style="margin: 0 0 10px 0; color: #92400e; font-weight: bold;">⚠️ ${data.message}</p>
-          <p style="margin: 0; color: #92400e; font-size: 14px;">${data.hint}</p>
-          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;"><strong>Your question:</strong> "${question}"</p>
-          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;"><strong>Response format:</strong> <code>{ "answer": "..." }</code></p>
-        </div>
-      `;
-    } else if (data.answer) {
-      responseText.innerHTML = `<p style="font-size: 15px;">${data.answer}</p>`;
-    } else {
-      throw new Error('Invalid response format');
+    const path = action === 'ask' ? '/transactions/ask' : '/transactions/summarize';
+    const payload = {transactions: allTransactions.map(row => ({...row}))};
+    if (action === 'ask') {
+      payload.question = question;
+      await txnConversation.ready;
+      txnConversation.addTo(payload);
     }
+    const response = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'The assistant is unavailable.');
+    const text = action === 'ask' ? data.answer : data.summary;
+    if (typeof text !== 'string' || !text.trim()) throw new Error('The assistant returned an invalid response.');
+    showTxnResponse(text);
+    if (action === 'ask') txnConversation.record(question, data);
   } catch (error) {
-    responseText.innerHTML = `
-      <div style="padding: 15px; background: #fee2e2; border-radius: 6px; border-left: 4px solid #dc2626;">
-        <p style="margin: 0 0 10px 0; color: #991b1b; font-weight: bold;">❌ Error</p>
-        <p style="margin: 0; color: #991b1b; font-size: 14px;">${error.message || 'Failed to connect to the API. Make sure the backend is running.'}</p>
-      </div>
-    `;
+    showTxnResponse(error.message || 'The assistant is unavailable.', true);
+  } finally {
+    assistantBusy = false;
+    txnConversation.setBusy(false);
+    updateTxnControls();
   }
 }
 
-async function getTxnSummary() {
-  const responseDiv = document.getElementById('txn-ai-response');
-  const responseText = document.getElementById('txn-ai-response-text');
-  
-  responseDiv.style.display = 'block';
-  responseText.innerHTML = '<p style="color: #64748b;">📊 Generating summary...</p>';
-  
-  try {
-    const response = await fetch(API_BASE + '/transactions/summarize', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        transactions: allTransactions
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.error === "Not implemented") {
-      responseText.innerHTML = `
-        <div style="padding: 15px; background: #fef3c7; border-radius: 6px; border-left: 4px solid #f59e0b;">
-          <p style="margin: 0 0 10px 0; color: #92400e; font-weight: bold;">⚠️ ${data.message}</p>
-          <p style="margin: 0; color: #92400e; font-size: 14px;">${data.hint}</p>
-          <p style="margin: 10px 0 0 0; color: #92400e; font-size: 13px;"><strong>Response format:</strong> <code>{ "summary": "..." }</code></p>
-        </div>
-      `;
-    } else if (data.summary) {
-      responseText.innerHTML = `<p style="font-size: 15px; line-height: 1.8;">${data.summary}</p>`;
-    } else {
-      throw new Error('Invalid response format');
-    }
-  } catch (error) {
-    responseText.innerHTML = `
-      <div style="padding: 15px; background: #fee2e2; border-radius: 6px; border-left: 4px solid #dc2626;">
-        <p style="margin: 0 0 10px 0; color: #991b1b; font-weight: bold;">❌ Error</p>
-        <p style="margin: 0; color: #991b1b; font-size: 14px;">${error.message || 'Failed to connect to the API. Make sure the backend is running.'}</p>
-      </div>
-    `;
-  }
-}
+function askTxnQuestion() { return runTxnAssistant('ask'); }
+function getTxnSummary() { return runTxnAssistant('summarize'); }
+
+next();
 </script>
-
 </body>
 </html>

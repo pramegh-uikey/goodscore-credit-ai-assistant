@@ -1,7 +1,3 @@
-#Backend Server
+# Backend server
 
-#pip install -r requirements.txt
-#uvicorn server:app --reload
-
-#Runs on:
-#http://localhost:8000
+See the repository README for setup, architecture, API behavior, and tests.

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8" />
   <title>Dashboard</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="config.js"></script>
@@ -12,7 +13,7 @@
 <div class="section">
   <div class="header">
     <h2>Credit Score</h2>
-    <button class="audio-btn">🔊 Explain</button>
+    <button class="audio-btn" type="button" data-explain="dashboard.credit_score" disabled>Explain</button>
   </div>
   <div style="display: flex; align-items: center; gap: 20px;">
     <div>
@@ -27,7 +28,7 @@
 <div class="section">
   <div class="header">
     <h2>Top Transactions</h2>
-    <button class="audio-btn">🔊 Explain</button>
+    <button class="audio-btn" type="button" data-explain="dashboard.top_transactions" disabled>Explain</button>
   </div>
   <table id="txnTable"></table>
   <a class="link" href="transactions.html">View 6 months →</a>
@@ -36,95 +37,15 @@
 <div class="section">
   <div class="header">
     <h2>Top Active Loans</h2>
-    <button class="audio-btn">🔊 Explain</button>
+    <button class="audio-btn" type="button" data-explain="dashboard.active_loans" disabled>Explain</button>
   </div>
   <div id="loanCards"></div>
   <a class="link" href="loans.html">View all loans →</a>
 </div>
 
-<script>
-async function load() {
-  // Load credit score with change indicator
-  const credit = await fetch(API_BASE + "/credit/summary").then(r=>r.json());
-  document.getElementById("score").innerText = credit.score;
-  
-  const changeText = credit.change >= 0 ? `+${credit.change}` : `${credit.change}`;
-  const changeColor = credit.change >= 0 ? '#059669' : '#dc2626';
-  document.getElementById("score-change").innerHTML = `<span style="color: ${changeColor}; font-weight: bold;">${changeText} points</span> from last month`;
-  
-  const refreshDate = new Date(credit.last_refreshed);
-  const now = new Date();
-  const hoursDiff = Math.floor((now - refreshDate) / (1000 * 60 * 60));
-  document.getElementById("last-refreshed").innerText = `Last refreshed: ${hoursDiff} hours ago`;
+<script src="section-explain.js"></script>
+<script src="dashboard.js"></script>
 
-  // Load top transactions with enhanced data
-  const txns = await fetch(API_BASE + "/transactions/top").then(r=>r.json());
-  const t = document.getElementById("txnTable");
-  t.innerHTML = `<tr style="background: #f9f9f9; font-weight: bold;">
-    <th>Date</th><th>Category</th><th>Type</th><th>Amount</th>
-  </tr>`;
-  txns.forEach(x => {
-    const typeColor = x.type === 'debit' ? '#dc2626' : '#059669';
-    const typeSymbol = x.type === 'debit' ? '-' : '+';
-    t.innerHTML += `<tr>
-      <td>${x.date}</td>
-      <td>${x.category}</td>
-      <td style="color: ${typeColor}; font-weight: bold;">${x.type.toUpperCase()}</td>
-      <td style="color: ${typeColor};">${typeSymbol}₹${x.amount}</td>
-    </tr>`;
-  });
-
-  // Load top active loans with L1 data
-  const loans = await fetch(API_BASE + "/loans/summary").then(r=>r.json());
-  const loanCards = document.getElementById("loanCards");
-  loans.forEach(loan => {
-    const progress = ((loan.original_amount - loan.outstanding) / loan.original_amount * 100).toFixed(1);
-    loanCards.innerHTML += `
-      <div style="border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #fafafa;">
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-          <div>
-            <h3 style="margin: 0 0 5px 0;">${loan.name}</h3>
-            <span style="background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 12px;">${loan.type}</span>
-          </div>
-          <div style="text-align: right;">
-            <p style="margin: 0; font-size: 12px; color: #666;">Outstanding</p>
-            <p style="margin: 0; font-size: 20px; font-weight: bold;">₹${loan.outstanding.toLocaleString()}</p>
-          </div>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 13px;">
-          <div>
-            <p style="margin: 0; color: #666;">EMI</p>
-            <p style="margin: 0; font-weight: bold;">₹${loan.emi.toLocaleString()}</p>
-          </div>
-          <div>
-            <p style="margin: 0; color: #666;">Interest Rate</p>
-            <p style="margin: 0; font-weight: bold;">${loan.interest_rate}%</p>
-          </div>
-          <div>
-            <p style="margin: 0; color: #666;">Next Due</p>
-            <p style="margin: 0; font-weight: bold;">${loan.next_due_date}</p>
-          </div>
-        </div>
-        <div style="margin-top: 10px;">
-          <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px;">
-            <span>${progress}% paid</span>
-            <span>${loan.tenure_remaining} remaining</span>
-          </div>
-          <div style="background: #e5e7eb; height: 8px; border-radius: 4px; overflow: hidden;">
-            <div style="background: #10b981; height: 100%; width: ${progress}%;"></div>
-          </div>
-        </div>
-        <a class="link" style="margin-top: 10px;" href="loan-details.html#id=${loan.id}">View detailed breakdown →</a>
-      </div>
-    `;
-  });
-}
-
-load();
-</script>
-
-<!-- Candidate adds agent here -->
-<!-- <script src="agent.js"></script> -->
 
 </body>
 </html>

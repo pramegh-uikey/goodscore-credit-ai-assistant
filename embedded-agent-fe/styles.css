@@ -68,6 +68,25 @@ h3 {
   transform: scale(0.98);
 }
 
+.audio-btn:disabled { opacity: .5; cursor: not-allowed; }
+.section-data-status { color: #64748b; font-size: 13px; }
+.section-data-status:empty { display: none; }
+.explain-panel { margin: 0 0 20px; padding: 20px; background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 12px; color: #334155; line-height: 1.6; }
+.explain-panel h3 { margin: 12px 0 6px; font-size: 15px; color: #1e40af; }
+.explain-panel h3:first-child { margin-top: 0; }
+.explain-panel p, .explain-panel ul { margin: 0 0 12px; }
+.explain-panel li { margin-bottom: 5px; }
+.explain-audio-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.explain-audio-controls span { font-size: 13px; }
+.explain-audio-controls button:disabled { opacity: .5; cursor: not-allowed; }
+.section-loan-card { border: 1px solid #e5e7eb; padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #fafafa; }
+.section-loan-card dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.section-loan-card dt { color: #64748b; font-size: 13px; }
+.section-loan-card dd { margin: 3px 0 0; font-weight: 600; }
+.section-progress { background: #e5e7eb; height: 8px; border-radius: 5px; overflow: hidden; }
+.section-progress > div { background: #10b981; height: 100%; }
+@media (max-width: 600px) { .section-loan-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } .explain-panel { padding: 14px; } }
+
 table {
   width: 100%;
   border-collapse: collapse;
